@@ -9,7 +9,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  speech_to_text: ^6.1.1  # 用于语音识别
   http: ^0.13.5  # 用于网络请求
   provider: ^6.1.2  # 用于状态管理
   shared_preferences: ^2.2.3  # 用于本地存储配置
