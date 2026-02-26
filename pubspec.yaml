@@ -1,0 +1,32 @@
+name: uspeak
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  speech_to_text: ^6.1.1  # 用于语音识别
+  http: ^0.13.5  # 用于网络请求
+  provider: ^6.1.2  # 用于状态管理
+  shared_preferences: ^2.2.3  # 用于本地存储配置
+  audioplayers: ^6.0.0  # 用于播放音频（如果有需要）
+  uuid: ^4.0.0  # 用于生成唯一标识符
+  path: ^1.8.0  # 用于路径操作
+  record: ^6.2.0   # 用于录音
+  logging: ^1.2.0  # 用于日志记录
+  path_provider: ^2.1.1  # 用于获取临时目录等路径
+  qr_flutter: ^4.1.0  # 用于生成二维码
+  mobile_scanner: ^3.5.1  # 用于扫描二维码
+  permission_handler: ^11.0.1  # 处理相机权限
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
