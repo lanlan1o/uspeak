@@ -51,10 +51,15 @@ jobs:
         run: flutter pub get
 
       # --- 执行构建 ---
+# --- 执行构建 (带内存优化) ---
       - name: Build Android
         if: matrix.platform == 'android'
+        # 通过环境变量限制 Gradle 和 Kotlin 的内存，防止 Daemon 崩溃
+        env:
+          _JAVA_OPTIONS: "-Xmx4g"
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dkotlin.incremental=false"
         run: flutter build apk --release
-
+        
       - name: Build Windows
         if: matrix.platform == 'windows'
         run: |
