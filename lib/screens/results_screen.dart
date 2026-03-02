@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'; // 用于检测平台类型
+import 'package:flutter/services.dart'; // 用于处理 Android 返回键
 import '../services/local_storage_service.dart'; // 导入本地存储服务
 
 class ResultsScreen extends StatefulWidget {
@@ -49,6 +50,18 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 使用 WillPopScope 来处理 Android 返回键，直接返回到主页面
+    return WillPopScope(
+      onWillPop: () async {
+        // 返回到主页面而不是上一个页面
+        Navigator.popUntil(context, ModalRoute.withName('/'));
+        return false; // 阻止默认的返回行为
+      },
+      child: _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     if (widget.results.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('练习结果')),

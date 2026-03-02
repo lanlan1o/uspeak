@@ -194,13 +194,10 @@ class _PracticeScreenState extends State<PracticeScreen> {
     }
     
     // 检查是否已获取到录音文件
-    if (_audioFilePath == null) {
-      _logger.warning('没有找到录音文件路径');
+    if (_audioFilePath == null || !await File(_audioFilePath!).exists()) {
+      // 如果没有录音文件，只是重置状态而不显示错误消息
+      _logger.info('没有找到录音文件或文件不存在，重置状态');
       if (mounted) {
-        // 不自动提交，而是提示用户
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('录音文件未找到，无法自动提交，请手动提交')),
-        );
         setState(() {
           _isRecording = false;
           _remainingTime = _recordTime;
@@ -220,6 +217,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
       Map<String, dynamic> result = await ApiService.submitAudio(
         widget.passageIndex,
         _audioFilePath!,
+        _currentSentenceIndex, // 添加缺失的第三个参数
       );
       
       String accessToken = result['access_token'];
@@ -377,46 +375,15 @@ class _PracticeScreenState extends State<PracticeScreen> {
     }
   }
 
-  void _submitResults() async {
-    // 显示加载状态
-    if (!_disposed) {
-      setState(() {
-        _isLoading = true;
-      });
-    }
-
-    try {
-      // 构建结果数据
-      List<Map<String, dynamic>> results = [];
-      for (int i = 0; i < _sentences.length && i < _recognizedResults.length; i++) {
-        results.add({
-          'original': _sentences[i],
-          'recognized': _recognizedResults[i],
-          'score': _scores.length > i ? _scores[i] : 0.0,
-        });
-      }
-
-      // 导航到结果页面
-      if (!mounted) return; // 检查widget是否仍然挂载
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ResultsScreen(results: results),
-        ),
-      );
-    } finally {
-      if (!_disposed) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
   @override
   void dispose() {
     _disposed = true; // 设置disposed标志
     _timer?.cancel(); // 取消定时器
+    
+    // 如果正在录音，停止录音并清理录音文件
+    if (_isRecording) {
+      _stopRecordingAndSubmit();
+    }
     
     // 清理资源
     _sentences.clear();
@@ -513,6 +480,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
                         style: const TextStyle(fontSize: 18),
                         textAlign: TextAlign.center,
                       ),
+                      // 将 child 参数移到最后
                     ),
                     
                     const SizedBox(height: 20),
@@ -582,164 +550,6 @@ class _PracticeScreenState extends State<PracticeScreen> {
                     
                     const SizedBox(height: 20),
                     
-                    // 仅在非Web环境下显示评分按钮，或者在已有识别结果时显示
-                    if (!kIsWeb && _transcript.isNotEmpty && _recognizedResults.length <= _currentSentenceIndex)
-                      Center(
-                        child: ElevatedButton.icon(
-                          onPressed: () async {
-                            // 检查是否有录音文件存在，如果没有则不进行音频处理，只使用语音识别结果
-                            if (_audioFilePath == null || !await File(_audioFilePath!).exists()) {
-                              // 没有录音文件，仅使用已有的转录结果进行评分
-                              setState(() {
-                                _isLoading = true;
-                              });
-                              
-                              try {
-                                // 为当前句子获取评分，使用现有的转录结果
-                                double score = await ApiService.getScore(
-                                  _sentences[_currentSentenceIndex], 
-                                  _transcript
-                                );
-                                
-                                // 更新评分和识别结果
-                                if (_scores.length <= _currentSentenceIndex) {
-                                  _scores.add(score);
-                                } else {
-                                  _scores[_currentSentenceIndex] = score;
-                                }
-                                
-                                if (_recognizedResults.length <= _currentSentenceIndex) {
-                                  _recognizedResults.add(_transcript);
-                                } else {
-                                  _recognizedResults[_currentSentenceIndex] = _transcript;
-                                }
-                                
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('评分完成: ${score.toStringAsFixed(1)}分')),
-                                  );
-                                }
-                              } catch (e) {
-                                _logger.severe('评分失败: $e');
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('评分失败，请重试')),
-                                  );
-                                }
-                              } finally {
-                                if (!_disposed && mounted) {
-                                  setState(() {
-                                    _isLoading = false;
-                                  });
-                                }
-                              }
-                              return; // 提前结束，不执行下面的音频上传逻辑
-                            }
-                            
-                            // 如果有录音文件，则继续执行音频上传和处理流程
-                            try {
-                              setState(() {
-                                _isLoading = true;
-                              });
-                              
-                              // 上传音频文件到服务器
-                              Map<String, dynamic> result = await ApiService.submitAudio(
-                                widget.passageIndex,
-                                _audioFilePath!,
-                              );
-                              
-                              String accessToken = result['access_token'];
-                              
-                              // 轮询服务器获取处理结果
-                              Map<String, dynamic> processingResult = await _pollForResult(accessToken);
-                              
-                              // 根据新的API响应格式处理结果
-                              String recognizedText = '';
-                              double score = 0.0;
-                              
-                              if (processingResult.containsKey('result')) {
-                                recognizedText = processingResult['result'];
-                              } else if (processingResult.containsKey('recognized_text')) {
-                                recognizedText = processingResult['recognized_text'];
-                              }
-                              
-                              if (processingResult.containsKey('score')) {
-                                score = processingResult['score'].toDouble();
-                              }
-                              
-                              // 如果服务器没有返回识别文本，给用户提示
-                              if (recognizedText.isEmpty) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('未能识别出语音内容，请重试')),
-                                  );
-                                }
-                                return;
-                              }
-                              
-                              // 保存结果
-                              if (_scores.length <= _currentSentenceIndex) {
-                                _scores.add(score);
-                              } else {
-                                _scores[_currentSentenceIndex] = score;
-                              }
-                              
-                              if (_recognizedResults.length <= _currentSentenceIndex) {
-                                _recognizedResults.add(recognizedText);
-                              } else {
-                                _recognizedResults[_currentSentenceIndex] = recognizedText;
-                              }
-                              
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('录音处理成功，得分: ${score.toStringAsFixed(1)}分')),
-                                );
-                              }
-                              
-                              // 更新界面显示识别结果
-                              setState(() {
-                                _transcript = recognizedText;
-                                _isLoading = false;
-                              });
-                            } catch (e) {
-                              _logger.severe('上传音频或获取结果失败: $e');
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('处理录音时出现错误: $e')),
-                                );
-                              }
-                            } finally {
-                              // 清理录音文件
-                              if (_audioFilePath != null) {
-                                try {
-                                  File audioFile = File(_audioFilePath!);
-                                  if (await audioFile.exists()) {
-                                    await audioFile.delete();
-                                  }
-                                } catch (e) {
-                                  _logger.warning('删除录音文件失败: $e');
-                                }
-                                _audioFilePath = null;
-                              }
-                              
-                              if (!_disposed && mounted) {
-                                setState(() {
-                                  _isLoading = false;
-                                });
-                              }
-                            }
-                          },
-                          icon: const Icon(Icons.star),
-                          label: const Text('获取评分'),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                            backgroundColor: Colors.orange,
-                          ),
-                        ),
-                      ),
-                    
-                    const SizedBox(height: 20),
-                    
                     // 导航按钮
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -752,14 +562,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
                           onPressed: _isProcessing || _isRecording || _isLoading ? null : _nextSentence, // 录音或处理时禁用
                           child: const Text('下一句'),
                         ),
-                        ElevatedButton(
-                          onPressed: 
-                            _currentSentenceIndex == _sentences.length - 1 && _recognizedResults.isNotEmpty
-                              ? _submitResults
-                              : null,
-                          child: const Text('提交结果'),
-                        ),
-                        // 添加完成练习按钮
+                        // 只保留一个完成练习按钮
                         ElevatedButton(
                           onPressed: _allSentencesCompleted() 
                               ? _finishPractice 

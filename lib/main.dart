@@ -11,7 +11,7 @@ class UspeakApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '英语朗读练习系统',
+      title: 'Uspeak 0.1.2 +2',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,

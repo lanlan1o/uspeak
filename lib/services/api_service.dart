@@ -75,12 +75,12 @@ class ApiService {
 
   /// 提交音频文件进行处理
   static Future<Map<String, dynamic>> submitAudio(
-      int passageId, String filePath) async {
+      int passageId, String filePath , int sentence) async {
     try {
       final baseUrl = await getBaseUrl();
       var request = http.MultipartRequest(
         'POST',
-        Uri.parse('$baseUrl/submitAudio'),
+        Uri.parse('$baseUrl/submitAudio/$sentence'),
       );
       
       request.fields['passage_id'] = passageId.toString();

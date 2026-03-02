@@ -62,6 +62,10 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('英语朗读练习系统'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadPassages, // 添加刷新功能
+          ),
+          IconButton(
             icon: const Icon(Icons.qr_code),
             onPressed: () {
               Navigator.push(
@@ -89,6 +93,14 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.settings),
             onPressed: () async {
               await _showSettingsDialog(context);
+              // 设置对话框关闭后自动重载数据
+              if(mounted) {
+                setState(() {
+                  _isLoading = true;
+                  _errorMessage = null;
+                });
+              }
+              _loadPassages();
             },
           ),
         ],
@@ -289,82 +301,76 @@ class _HomeScreenState extends State<HomeScreen> {
     await showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('应用设置'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                TextField(
-                  controller: apiServerUrlController,
-                  decoration: const InputDecoration(
-                    labelText: 'API服务器地址',
-                    hintText: '例如: http://localhost:5000',
-                    border: OutlineInputBorder(),
-                  ),
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            return AlertDialog(
+              title: const Text('应用设置'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    TextField(
+                      controller: apiServerUrlController,
+                      decoration: const InputDecoration(
+                        labelText: 'API服务器地址',
+                        hintText: '例如: http://localhost:5000',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: pollTimeoutController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: '轮询超时时间(秒)',
+                        hintText: '例如: 30',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: pollTimeoutController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: '轮询超时时间(秒)',
-                    hintText: '例如: 30',
-                    border: OutlineInputBorder(),
-                  ),
+              ),
+              actions: [
+                TextButton(
+                  child: const Text('取消'),
+                  onPressed: () {
+                    Navigator.of(context).pop(); // 关闭对话框
+                  },
+                ),
+                TextButton(
+                  child: const Text('保存'),
+                  onPressed: () async {
+                    int timeoutValue = 30;
+                    try {
+                      timeoutValue = int.parse(pollTimeoutController.text);
+                      if (timeoutValue < 5) {
+                        timeoutValue = 5; // 最小值为5秒
+                      } else if (timeoutValue > 300) {
+                        timeoutValue = 300; // 最大值为300秒
+                      }
+                    } catch (e) {
+                      // 如果解析失败，使用默认值
+                      timeoutValue = 30;
+                    }
+                    
+                    await _configService.saveConfig({
+                      'current_language': config['current_language'],
+                      'api_server_url': apiServerUrlController.text,
+                      'poll_timeout_seconds': timeoutValue,
+                    });
+                    
+                    // 重置API服务的基础URL，以便使用新的服务器地址
+                    ApiService.getBaseUrl();
+                    
+                    if (mounted) {
+                      Navigator.of(context).pop(); // 关闭对话框
+                    }
+                  },
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              child: const Text('取消'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-            TextButton(
-              child: const Text('保存'),
-              onPressed: () async {
-                int timeoutValue = 30;
-                try {
-                  timeoutValue = int.parse(pollTimeoutController.text);
-                  if (timeoutValue < 5) {
-                    timeoutValue = 5; // 最小值为5秒
-                  } else if (timeoutValue > 300) {
-                    timeoutValue = 300; // 最大值为300秒
-                  }
-                } catch (e) {
-                  // 如果解析失败，使用默认值
-                  timeoutValue = 30;
-                }
-                
-                await _configService.saveConfig({
-                  'current_language': config['current_language'],
-                  'api_server_url': apiServerUrlController.text,
-                  'poll_timeout_seconds': timeoutValue,
-                });
-                
-                // 重置API服务的基础URL，以便使用新的服务器地址
-                ApiService.getBaseUrl();
-                
-                // 重新加载段落
-                if (mounted) {
-                  setState(() {
-                    _isLoading = true;
-                    _errorMessage = null;
-                  });
-                }
-                
-                _loadPassages();
-                
-                if (mounted) {
-                  Navigator.of(context).pop();
-                }
-              },
-            ),
-          ],
+            );
+          },
         );
       },
     );
