@@ -1,0 +1,111 @@
+name: Multi-Platform Release Build
+
+on:
+  push:
+    tags:
+      - 'v*' # 当你推送以 v 开头的标签（如 v1.0.0）时触发发布流程
+
+jobs:
+  build:
+    name: Build for ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            os: ubuntu-latest
+            output_file: build/app/outputs/flutter-apk/app-release.apk
+            release_name: app-release.apk
+
+          - platform: ios
+            os: macos-latest
+            # iOS 默认构建出 .app 目录，Release 建议打成 .zip
+            output_file: build/ios/iphoneos/Payload.zip
+            release_name: ios-release.zip
+
+          - platform: windows
+            os: windows-latest
+            output_file: build/windows/x64/runner/Release/windows-release.zip
+            release_name: windows-release.zip
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # --- 环境配置 ---
+      - name: Set up Java (Android only)
+        if: matrix.platform == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # --- 执行构建 ---
+      - name: Build Android
+        if: matrix.platform == 'android'
+        run: flutter build apk --release
+
+      - name: Build Windows
+        if: matrix.platform == 'windows'
+        run: |
+          flutter build windows --release
+          powershell Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath build/windows/x64/runner/Release/windows-release.zip
+
+      - name: Build iOS
+        if: matrix.platform == 'ios'
+        run: |
+          flutter build ios --release --no-codesign
+          # 将 .app 放入 Payload 文件夹并压缩，模拟 IPA 结构
+          cd build/ios/iphoneos
+          mkdir Payload
+          cp -r Runner.app Payload/
+          zip -r Payload.zip Payload/
+
+      # --- 上传到 Artifacts (临时存储) ---
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-artifact
+          path: ${{ matrix.output_file }}
+          retention-days: 1
+
+  # --- 发布任务：等待所有构建完成后执行 ---
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 必须开启写入权限才能创建 Release
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/app-release.apk
+            artifacts/ios-release.zip
+            artifacts/windows-release.zip
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            ## 自动构建更新
+            这是由 GitHub Actions 自动生成的发布版本。
+            - **Android**: app-release.apk
+            - **iOS**: ios-release.zip (未签名)
+            - **Windows**: windows-release.zip
+          draft: false
+          prerelease: false
